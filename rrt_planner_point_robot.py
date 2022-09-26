@@ -108,7 +108,58 @@ def closestPointToPoint(G,p2):
     return closest
 
 def lineHitsRect(p1,p2,r):
-    #TODO
+    #Use bezier parameters to determine intersection between
+    #line and rect
+
+    #Function for determinant of 2x2 matrix
+    def det(A,B,C,D):
+        return (A*D)-(B*C)
+
+
+    #let line from p1 to p2 be denoted L: (x3,y3) -> (x4,y4)
+
+    #Seperate rectangle into its 4 lines
+    #R1: top-left -> top-right = (x1,y1) -> (x2=(x1+x2),y1)
+    #R2: bottom-left -> bottom-right = (x1=(x2-x1),y2) -> (x2,y2)
+    #R3: top-let -> bottom-left = (x1,y1) -> (x2=(x2-x1),y2)
+    #R4: top-right -> bottom-right = (x1=(x1+x2),y1) -> (x2,y2)
+    
+    #intersection L and R1:
+    #(x1-x3)*(y3-y4)-(y1-y3)(x3-x4)/(x1-(x1+x2))(y3-y4)-(y1-y1)(x3-x4)
+    numerator_LR1 = det((r[0][0]-p1[0]),(p1[0]-p2[0]),(r[0][1]-p1[1]),(p1[1]-p2[1]))
+    denominator_LR1 = det((r[0][0]-(r[0][0]+r[1][0])),(p1[0]-p2[0]),(r[0][1]-r[0][1]),(p1[1]-p2[2]))
+    t_LR1 = numerator_LR1/denominator_LR1
+    if t_LR1 <=1 and t_LR1 >= 0:
+        return True
+
+    #intersection L and R2:
+    #((x2-x1)-x3)*(y3-y4)-(y2-y3)*(x3-x4)/((x2-x1)-x2)*(y3-y4)-(y2-y2)*(x3-x4)
+    numerator_LR2 = det(((r[1][0]-r[0][0])-p1[0]),(p1[0]-p2[0]),(r[1][1]-p1[1]),(p1[1]-p2[1]))
+    denominator_LR2 = det(((r[1][0]-r[0][0])-r[1][0]),(p1[0]-p2[0]),(r[1][1]-r[1][1]),(p1[1]-p2[1]))
+    t_LR2 = numerator_LR2/denominator_LR2
+
+    if t_LR2 <=1 and t_LR2 >= 0:
+        return True
+
+    #intersection L and R3:
+    #(x1-x3)*(y3-y4)-(y1-y3)*(x3-x4)/(x1-(x2-x1))*(y3-y4)-(y1-y2)*(x3-x4)
+    numerator_LR3 = det((r[0][0]-p1[0]),(p1[0]-p2[0]),r[0][1]-p1[1],(p1[1]-p2[1]))
+    denominator_LR3 = det((r[0][0]-(r[1][0]-r[0][0])),(p1[0]-p2[0]),(r[0][1]-r[1][1]),(p1[1]-p2[1]))
+    t_LR3 = numerator_LR3/denominator_LR3
+
+    if t_LR3 <= 1 and t_LR3 >= 0:
+        return True
+
+    #intersection L and R4:
+    #(x1+x2-x3)*(y3-y4)-(y1-y3)*(x3-x4)/(x1+x2-x2)*(y3-y4)-(y1-y2)*(x3-x4)
+    numerator_LR4 = det((r[0][0]+r[1][0]-p1[0]),(p1[0]-p2[0]),(r[0][1]-p1[1]),(p1[1]-p2[1]))
+    denominator_LR4 = det((r[0][0]+r[1][0]-r[1][0]),(p1[0]-p2[0]),(r[0][1]-r[1][1]),(p1[1]-p2[1]))
+    t_LR4 = numerator_LR4/denominator_LR4
+
+    if t_LR4 <= 1 and t_LR4 >= 0:
+        return True
+    
+
     return False
 
 def inRect(p,rect,dilation):
