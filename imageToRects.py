@@ -33,15 +33,15 @@ def imageToRects(imagename):
 
     obdata = list( im.getdata() )
 
-    print ("Converting image to obstacle map.")
+    #print ("Converting image to obstacle map.")
     im = im.point( remap )
     # Convert an image into a set of rectangular obstacles
     y=0
     while y<YMAX:
        x=0
 
-       if y%25==0:
-           print(str(int(y/YMAX*100)),"%.....     \r")
+       #if y%25==0:
+       #    print(str(int(y/YMAX*100)),"%.....     \r")
 
        while x<XMAX:
           # see if point already in some rectangle
@@ -87,12 +87,13 @@ def imageToRects(imagename):
               x = x+ok_dx
           x = x+1
        y = y+1
-    print ("Converting image to obstacle map, done.")
+    #print ("Converting image to obstacle map, done.")
     return ( im.size, obstacles )
 
 
 if __name__ == '__main__':
     import sys
     s,rects = imageToRects(sys.argv[1])
-    for r in rects:
-        print (r)
+    #for r in rects:
+    #    
+    #    print (r)

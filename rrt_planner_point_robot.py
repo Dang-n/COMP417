@@ -16,6 +16,8 @@ GOOD LUCK!
 '''
 
 import random
+from threading import Timer
+import time
 import drawSample
 import sys
 import imageToRects
@@ -37,7 +39,6 @@ def drawGraph(G, canvas):
     for i in G[edges]:
         # e.g. vertices: [[10, 270], [10, 280]]
         canvas.polyline(  [vertices[i[0]], vertices[i[1]] ]  )
-
 
 # Use this function to generate points randomly for the RRT algo
 def genPoint():
@@ -93,7 +94,7 @@ def pickvertex():
     return random.choice( range(len(vertices) ))
 
 def lineFromPoints(p1,p2):
-    return (p2[1]-p1[1])/(p2[0]-p1[0])
+    return [(p2[0]-p1[0]),(p2[1]-p1[1])]
 
 
 def pointPointDistance(p1,p2):
@@ -102,74 +103,71 @@ def pointPointDistance(p1,p2):
 
 def closestPointToPoint(G,p2):
     closest = math.inf
-    for v in G[vertices]:
-        if (pointPointDistance(v,p2) < closest): 
-            closest = pointPointDistance(v,p2)
-    return closest
+    closestV = 0
+    for v in G[nodes]:
+        distance = pointPointDistance(vertices[v],p2)
+        if distance < closest:
+            closest = distance
+            closestV = v
+
+    return closestV
+
 
 def lineHitsRect(p1,p2,r):
-    #Use bezier parameters to determine intersection between
-    #line and rect
 
-    #Function for determinant of 2x2 matrix
+    #r[0] = x1, r[1] = y1, r[2] = x2, r[3] = y2 
+    rTop = [r[0],r[1],r[2],r[1]]
+    rBot = [r[0],r[3],r[2],r[3]]
+    rLeft = [r[0],r[1],r[0],r[3]]
+    rRight = [r[2],r[1],r[2],r[3]]
+    sides = [rTop, rBot, rLeft, rRight]
+    #Let p1 = (x3,y3) and p2 = (x4,y4)
+
+    #s(x2-x1)-t(x4-x3)=x3-x1
+    #s(y2-y1)-t(y4-y3)=y3-y1
+
+    #Cramers rule: s = (x3-x1)(y4-y3)-(y3-y1)(x4-x3)/(x2-x1)(y4-y3)-(y2-y1)(x4-x3)
+    #              t = (x2-x1)(y3-y1)-(y2-y1)(x3-x1)/(x2-x1)(y4-y3)-(y2-y1)(x4-x3)
+
     def det(A,B,C,D):
-        return (A*D)-(B*C)
+        return (A*C)-(B*D)
 
-
-    #let line from p1 to p2 be denoted L: (x3,y3) -> (x4,y4)
-
-    #Seperate rectangle into its 4 lines
-    #R1: top-left -> top-right = (x1,y1) -> (x2=(x1+x2),y1)
-    #R2: bottom-left -> bottom-right = (x1=(x2-x1),y2) -> (x2,y2)
-    #R3: top-let -> bottom-left = (x1,y1) -> (x2=(x2-x1),y2)
-    #R4: top-right -> bottom-right = (x1=(x1+x2),y1) -> (x2,y2)
-    
-    #intersection L and R1:
-    #(x1-x3)*(y3-y4)-(y1-y3)(x3-x4)/(x1-(x1+x2))(y3-y4)-(y1-y1)(x3-x4)
-    numerator_LR1 = det((r[0][0]-p1[0]),(p1[0]-p2[0]),(r[0][1]-p1[1]),(p1[1]-p2[1]))
-    denominator_LR1 = det((r[0][0]-(r[0][0]+r[1][0])),(p1[0]-p2[0]),(r[0][1]-r[0][1]),(p1[1]-p2[2]))
-    t_LR1 = numerator_LR1/denominator_LR1
-    if t_LR1 <=1 and t_LR1 >= 0:
-        return True
-
-    #intersection L and R2:
-    #((x2-x1)-x3)*(y3-y4)-(y2-y3)*(x3-x4)/((x2-x1)-x2)*(y3-y4)-(y2-y2)*(x3-x4)
-    numerator_LR2 = det(((r[1][0]-r[0][0])-p1[0]),(p1[0]-p2[0]),(r[1][1]-p1[1]),(p1[1]-p2[1]))
-    denominator_LR2 = det(((r[1][0]-r[0][0])-r[1][0]),(p1[0]-p2[0]),(r[1][1]-r[1][1]),(p1[1]-p2[1]))
-    t_LR2 = numerator_LR2/denominator_LR2
-
-    if t_LR2 <=1 and t_LR2 >= 0:
-        return True
-
-    #intersection L and R3:
-    #(x1-x3)*(y3-y4)-(y1-y3)*(x3-x4)/(x1-(x2-x1))*(y3-y4)-(y1-y2)*(x3-x4)
-    numerator_LR3 = det((r[0][0]-p1[0]),(p1[0]-p2[0]),r[0][1]-p1[1],(p1[1]-p2[1]))
-    denominator_LR3 = det((r[0][0]-(r[1][0]-r[0][0])),(p1[0]-p2[0]),(r[0][1]-r[1][1]),(p1[1]-p2[1]))
-    t_LR3 = numerator_LR3/denominator_LR3
-
-    if t_LR3 <= 1 and t_LR3 >= 0:
-        return True
-
-    #intersection L and R4:
-    #(x1+x2-x3)*(y3-y4)-(y1-y3)*(x3-x4)/(x1+x2-x2)*(y3-y4)-(y1-y2)*(x3-x4)
-    numerator_LR4 = det((r[0][0]+r[1][0]-p1[0]),(p1[0]-p2[0]),(r[0][1]-p1[1]),(p1[1]-p2[1]))
-    denominator_LR4 = det((r[0][0]+r[1][0]-r[1][0]),(p1[0]-p2[0]),(r[0][1]-r[1][1]),(p1[1]-p2[1]))
-    t_LR4 = numerator_LR4/denominator_LR4
-
-    if t_LR4 <= 1 and t_LR4 >= 0:
-        return True
-    
-
-    return False
+    for side in sides:
+        paramS_num = det(p1[0]-side[0],p1[1]-side[1],p2[1]-p1[1],p2[0]-p1[0])
+        paramS_den = det(side[2]-side[0],side[3]-side[1],p2[1]-p1[1],p2[0]-p1[0])
+        if paramS_den == 0: return False
+        
+        paramT_num = det(side[2]-side[0],side[3]-side[1],p2[1]-side[1],p2[0]-side[0])
+        paramT_den = det(side[2]-side[0],side[3]-side[1],p2[1]-p1[1],p2[0]-p1[0])
+        if paramT_den == 0: return False
+        paramS = paramS_num/paramS_den
+        paramT = paramT_num/paramT_den
+        if (paramS >= 0 and paramS <= 1) and  (paramT >= 0 and paramT <= 1):
+            return True
+        else:
+            return False
 
 def inRect(p,rect,dilation):
     """ Return 1 in p is inside rect, dilated by dilation (for edge cases). """
-    #TODO
-    return False
+
+    if p[0]<rect[0]-dilation: return 0
+    if p[1]<rect[1]-dilation: return 0
+    if p[0]>rect[2]+dilation: return 0
+    if p[1]>rect[3]+dilation: return 0
+    return 1
+
 
 def addNewPoint(p1,p2,stepsize):
-    #TODO
-    return (0,0)
+    #Add new point towards p2 from p1 at a distance stepsize away
+    
+    #Get vector from p1 to p2
+    vec = lineFromPoints(p1,p2)
+    vecLen = pointPointDistance(p1,p2)
+    unitVec = [(vec[0]/vecLen),(vec[1]/vecLen)]
+
+    newPoint=[p1[0]+(stepsize*unitVec[0]),p1[1]+(stepsize*unitVec[1])]
+    return pointToVertex(newPoint)
+    
 
 def rrt_search(G, tx, ty, canvas):
     # Please carefully read the comments to get clues on where to start
@@ -180,42 +178,53 @@ def rrt_search(G, tx, ty, canvas):
     nsteps=0
     while 1: # Main loop
         # This generates a point in form of [x,y] from either the normal dist or the Gaussian dist
-        p = genPoint()
-
+        p = genvertex()
         # This function must be defined by you to find the closest point in the existing graph to the guiding point
-        cp = closestPointToPoint(G,p)
-        v = addNewPoint(cp,p,SMALLSTEP)
+        cp = closestPointToPoint(G,vertices[p])
+        v = addNewPoint(vertices[cp],vertices[p],SMALLSTEP)
 
         if visualize:
-            # if nsteps%500 == 0: redraw()  # erase generated points now and then or it gets too cluttered
+            if nsteps%500 == 0: redraw(canvas)  # erase generated points now and then or it gets too cluttered
             n=n+1
             if n>10:
                 canvas.events()
                 n=0
 
-
+        redo = False
         for o in obstacles:
             # The following function defined by you must handle the occlusion cases
-            if lineHitsRect(vertices[v],p,o) or inRect(p,o,1):
-                print ("TODO")
-                #... reject
 
-        k = pointToVertex( p )   # is the new vertex ID
-        G[nodes].append(k)
-        G[edges].append( (v,k) )
+            if lineHitsRect(vertices[cp],vertices[v],o) or inRect(vertices[v],o,1):
+                    vertices.pop(v)
+                    redo = True
+                    break
+
+            #... reject
+        
+        if redo:
+            continue
+
+        G[nodes].append(v)
+        G[edges].append( (cp, v) )
         if visualize:
-            canvas.polyline(  [vertices[v], vertices[k] ]  )
+            canvas.polyline( [vertices[cp], vertices[v]] )
 
-        if pointPointDistance(p, [tx,ty] ) < SMALLSTEP:
+
+        nsteps = nsteps+1
+        if pointPointDistance(vertices[v], [tx,ty] ) < SMALLSTEP:
             print ("Target achieved.", nsteps, "nodes in entire tree")
+            k = v
             if visualize:
                 t = pointToVertex([tx, ty])  # is the new vertex ID
-                G[edges].append((k, t))
+                G[edges].append((v, t))
                 if visualize:
-                    canvas.polyline([p, vertices[t]], 1)
-                # while 1:
-                #     # backtrace and show the solution ...
-                #     canvas.events()
+                    canvas.polyline([vertices[v], vertices[t]], 1)
+                    while 1:
+                        # backtrace and show the solution ...
+                        k = returnParent(k, canvas)
+                        canvas.events()
+                        if k == 0: break  
+                k = t
                 nsteps = 0
                 totaldist = 0
                 while 1:
@@ -237,24 +246,30 @@ def rrt_search(G, tx, ty, canvas):
                     if d == "q": return
                     if d == "g": prompt_before_next = 0
                 break
+        
 
 def main():
     #seed
+    
     random.seed(args.seed)
     if visualize:
         canvas = drawSample.SelectRect(xmin=0,ymin=0,xmax=XMAX ,ymax=YMAX, nrects=0, keepcontrol=0)#, rescale=800/1800.)
         for o in obstacles: canvas.showRect(o, outline='red', fill='blue')
+
+
     while 1:
         # graph G
+
         redraw(canvas)
         G[edges].append( (0,1) )
         G[nodes].append(1)
         if visualize: canvas.markit( tx, ty, r=SMALLSTEP )
         drawGraph(G, canvas)
-        #rrt_search(G, tx, ty, canvas)
+        rrt_search(G, tx, ty, canvas)
 
     if visualize:
         canvas.mainloop()
+
 
 if __name__ == '__main__':
 

@@ -20,12 +20,12 @@ XMAX = map_size[0]
 YMAX = map_size[1]
 
 G = [  [ 0 ]  , [] ]   # nodes, edges
-vertices = [ [args.start_pos_x, args.start_pos_y], [args.start_pos_x, args.start_pos_y + 10]]
+vertices = [ [args.start_pos_x, args.start_pos_y, args.start_pos_theta], [args.start_pos_x, args.start_pos_y + args.robot_length, args.start_pos_theta] ]
 
 # goal/target
 tx = args.target_pos_x
 ty = args.target_pos_y
-
+tt = args.target_pos_theta
 # start
 sigmax_for_randgen = XMAX/2.0
 sigmay_for_randgen = YMAX/2.0
@@ -52,10 +52,12 @@ def genPoint():
         # Uniform distribution
         x = random.random()*XMAX
         y = random.random()*YMAX
+        theta = random.random()*360
     elif args.rrt_sampling_policy == "gaussian":
         # Gaussian with mean at the goal
         x = random.gauss(tx, sigmax_for_randgen)
         y = random.gauss(ty, sigmay_for_randgen)
+        theta = abs(random.gauss(tt, 360))
     else:
         print ("Not yet implemented")
         quit(1)
@@ -67,25 +69,27 @@ def genPoint():
             # Uniform distribution
             x = random.random()*XMAX
             y = random.random()*YMAX
+            theta = random.random()*360
         elif args.rrt_sampling_policy == "gaussian":
             # Gaussian with mean at the goal
             x = random.gauss(tx, sigmax_for_randgen)
             y = random.gauss(ty, sigmay_for_randgen)
+            theta = abs(random.gauss(tt, 360))
         else:
             print ("Not yet implemented")
             quit(1)
         # range check for gaussian
         if x<0: bad = 1
         if y<0: bad = 1
+        if theta > 360: bad = 1
         if x>XMAX: bad = 1
         if y>YMAX: bad = 1
-    return [x,y]
+    return [x,y, theta]
 
 def returnParent(k, canvas):
     """ Return parent note for input node k. """
     for e in G[edges]:
         if e[1]==k:
-            canvas.polyline(  [vertices[e[0]], vertices[e[1]] ], style=3  )
             return e[0]
 
 def genvertex():
@@ -100,39 +104,119 @@ def pickvertex():
     return random.choice( range(len(vertices) ))
 
 def lineFromPoints(p1,p2):
-    #TODO
-    return None
+    return [(p2[0]-p1[0]),(p2[1]-p1[1])]
 
 
 def pointPointDistance(p1,p2):
-    #TODO
-    return 0
+    return math.sqrt(math.pow((p2[0]-p1[0]),2)+(math.pow((p2[1]-p1[1]),2)))
 
 def closestPointToPoint(G,p2):
-    #TODO
-    #return vertex index
-    return 0
+    closest = math.inf
+    closestV = 0
+    for v in G[nodes]:
+        distance = pointPointDistance(vertices[v],p2)
+        if distance < closest:
+            closest = distance
+            closestV = v
+
+    return closestV
 
 def lineHitsRect(p1,p2,r):
-    #TODO
-    return False
+
+    #r[0] = x1, r[1] = y1, r[2] = x2, r[3] = y2 
+    rTop = [r[0],r[1],r[2],r[1]]
+    rBot = [r[0],r[3],r[2],r[3]]
+    rLeft = [r[0],r[1],r[0],r[3]]
+    rRight = [r[2],r[1],r[2],r[3]]
+    sides = [rTop, rBot, rLeft, rRight]
+    #Let p1 = (x3,y3) and p2 = (x4,y4)
+
+    #s(x2-x1)-t(x4-x3)=x3-x1
+    #s(y2-y1)-t(y4-y3)=y3-y1
+
+    #Cramers rule: s = (x3-x1)(y4-y3)-(y3-y1)(x4-x3)/(x2-x1)(y4-y3)-(y2-y1)(x4-x3)
+    #              t = (x2-x1)(y3-y1)-(y2-y1)(x3-x1)/(x2-x1)(y4-y3)-(y2-y1)(x4-x3)
+
+    def det(A,B,C,D):
+        return (A*C)-(B*D)
+
+    for side in sides:
+        paramS_num = det(p1[0]-side[0],p1[1]-side[1],p2[1]-p1[1],p2[0]-p1[0])
+        paramS_den = det(side[2]-side[0],side[3]-side[1],p2[1]-p1[1],p2[0]-p1[0])
+        if paramS_den == 0: return False
+        
+        paramT_num = det(side[2]-side[0],side[3]-side[1],p2[1]-side[1],p2[0]-side[0])
+        paramT_den = det(side[2]-side[0],side[3]-side[1],p2[1]-p1[1],p2[0]-p1[0])
+        if paramT_den == 0: return False
+        paramS = paramS_num/paramS_den
+        paramT = paramT_num/paramT_den
+        if (paramS >= 0 and paramS <= 1) and  (paramT >= 0 and paramT <= 1):
+            return True
+        else:
+            return False
+
 
 def inRect(p,rect,dilation):
     """ Return 1 in p is inside rect, dilated by dilation (for edge cases). """
-    #TODO
-    return False
+    if p[0]<rect[0]-dilation: return 0
+    if p[1]<rect[1]-dilation: return 0
+    if p[0]>rect[2]+dilation: return 0
+    if p[1]>rect[3]+dilation: return 0
+    return 1
 
-def rrt_search(G, tx, ty, canvas):
+def addNewPoint(p1,p2,stepsize):
+    #Add new point towards p2 from p1 at a distance stepsize away
+    
+    #Get vector from p1 to p2
+    vec = lineFromPoints(p1,p2)
+    vecLen = pointPointDistance(p1,p2)
+    unitVec = [(vec[0]/vecLen),(vec[1]/vecLen)]
+
+    newPoint=[p1[0]+(stepsize*unitVec[0]),p1[1]+(stepsize*unitVec[1]), p2[2]]
+    return pointToVertex(newPoint)
+
+class robot:
+    length = args.robot_length
+    def __init__(self,x,y,theta):
+        self.x = x
+        self.y = y
+        self.theta = theta
+
+    def outOfBounds(self):
+        if self.head()[0] > 0: return 0
+        if self.head()[0] < XMAX: return 0
+        if self.head()[1] > 0: return 0
+        if self.head()[1] < YMAX: return 0
+        return 1
+         
+    def tail(self):
+        return [self.x, self.y]
+
+    def head(self):
+        return [self.x + (self.length*math.cos(math.radians(self.theta))), self.y + (self.length*math.sin(math.radians(self.theta)))]
+
+    def changePose(self, x, y, theta):
+        self.x = x
+        self.y = y
+        self.theta = theta
+
+def rrt_search(G, tx, ty, tt, canvas):
     #TODO
     #Fill this function as needed to work ...
-
+    bot = robot(args.start_pos_x,args.start_pos_y,args.start_pos_theta)
 
     global sigmax_for_randgen, sigmay_for_randgen
     n=0
     nsteps=0
     while 1:
-        p = genPoint()
-        v = closestPointToPoint(G,p)
+        p = genvertex()
+        cp = closestPointToPoint(G,vertices[p])
+        v = addNewPoint(vertices[cp], vertices[p], SMALLSTEP)
+        oldV = [bot.x, bot.y, bot.theta]
+        bot.changePose(vertices[v][0], vertices[v][1], vertices[p][2])
+        if bot.outOfBounds():
+            bot.changePose(oldV[0], oldV[1], oldV[2])
+            continue
 
         if visualize:
             # if nsteps%500 == 0: redraw()  # erase generated points now and then or it gets too cluttered
@@ -141,29 +225,54 @@ def rrt_search(G, tx, ty, canvas):
                 canvas.events()
                 n=0
 
-
+        redo = False
         for o in obstacles:
             #if inRect(p,o,1):
-            if lineHitsRect(vertices[v],p,o) or inRect(p,o,1):
-                print ("TODO")
+            if lineHitsRect(vertices[cp],vertices[v],o) or inRect(vertices[v],o,1):
+                vertices.pop(v)
+                bot.changePose(oldV[0], oldV[1], oldV[2])
+                redo = True
+                break
                 #... reject
+        if redo:
+            continue
 
-        k = pointToVertex( p )   # is the new vertex ID
-        G[nodes].append(k)
-        G[edges].append( (v,k) )
+        for o in obstacles:
+            if lineHitsRect(bot.tail(), bot.head(), o) or inRect(bot.tail(), o, 1) or inRect(bot.head(), o, 1):
+                vertices.pop(v)
+                bot.changePose(oldV[0], oldV[1], oldV[2])
+                redo = True
+                break
+        if redo:
+            continue
+
+        G[nodes].append(v)
+        G[edges].append( (cp,v) )
         if visualize:
-            canvas.polyline(  [vertices[v], vertices[k] ]  )
+            canvas.polyline(  [vertices[cp], vertices[v] ]  )
 
-        if pointPointDistance( p, [tx,ty] ) < SMALLSTEP:
+        nsteps = nsteps+1
+        if pointPointDistance( vertices[v], [tx,ty] ) < SMALLSTEP:
             print ("Target achieved.", nsteps, "nodes in entire tree")
+            k = v
             if visualize:
                 t = pointToVertex([tx, ty])  # is the new vertex ID
                 G[edges].append((k, t))
                 if visualize:
-                    canvas.polyline([p, vertices[t]], 1)
-                # while 1:
-                #     # backtrace and show the solution ...
-                #     canvas.events()
+                    canvas.polyline([bot.tail(), bot.head()], 1)
+                    while 1:
+                        # backtrace and show the solution ...
+                        finish = False
+                        for e in G[edges]:
+                            if e[1]==k:
+                                bot.changePose(vertices[e[1]][0], vertices[e[1]][1], vertices[e[1]][2])
+                                canvas.polyline( [ bot.tail(), bot.head() ], style=3  )
+                                k = e[0]
+                            if k==0: 
+                                finish = True
+                                break
+                        if finish: break
+                k=t
                 nsteps = 0
                 totaldist = 0
                 while 1:
@@ -199,7 +308,7 @@ def main():
         if visualize: canvas.markit( tx, ty, r=SMALLSTEP )
 
         drawGraph(G, canvas)
-        rrt_search(G, tx, ty, canvas)
+        rrt_search(G, tx, ty, tt, canvas)
 
     if visualize:
         canvas.mainloop()

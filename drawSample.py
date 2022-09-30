@@ -3,6 +3,7 @@
 # see canvasDraw_tags*.py for extensions with tags and animation
 #################################################################
 
+import threading
 from tkinter import *
 import _tkinter
 from PIL import Image
